@@ -1,0 +1,7 @@
+{
+  "name": "TranquiliCare",
+  "description": "Uma plataforma que conecta pessoas a organizações sem fins lucrativos, tornando a doação simples e divertida. Crie vídeos de impacto e encontre ONGs próximas.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
