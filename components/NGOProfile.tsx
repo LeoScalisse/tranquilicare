@@ -20,7 +20,8 @@ import {
   Upload,
   Play,
   Send,
-  Loader2
+  Loader2,
+  Clock
 } from 'lucide-react';
 
 interface NGOProfileProps {
@@ -38,9 +39,10 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
   const [editedData, setEditedData] = useState(ngo);
   
   // States for new post upload simulation
-  const [newPostFile, setNewPostFile] = useState<{url: string, type: 'image' | 'video'} | null>(null);
+  const [newPostFile, setNewPostFile] = useState<{url: string, type: 'image' | 'video', file: File} | null>(null);
   const [newPostCaption, setNewPostCaption] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStep, setUploadStep] = useState<'uploading' | 'optimizing' | 'done'>('uploading');
   const [uploadProgress, setUploadProgress] = useState(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,31 +56,13 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
     const file = e.target.files?.[0];
     if (file) {
       const isVideo = file.type.startsWith('video/');
-      const reader = new FileReader();
+      const url = URL.createObjectURL(file);
       
-      // Feedback imediato de carregamento do arquivo local
-      setIsUploading(true);
-      setUploadProgress(10); // Iniciando leitura
-
-      reader.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 50);
-          setUploadProgress(progress);
-        }
-      };
-
-      reader.onloadend = () => {
-        setNewPostFile({
-          url: reader.result as string,
-          type: isVideo ? 'video' : 'image'
-        });
-        setUploadProgress(100);
-        setTimeout(() => {
-          setIsUploading(false);
-          setUploadProgress(0);
-        }, 500);
-      };
-      reader.readAsDataURL(file);
+      setNewPostFile({
+        url: url,
+        type: isVideo ? 'video' : 'image',
+        file: file
+      });
     }
   };
 
@@ -86,17 +70,24 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
     if (!newPostFile || isUploading) return;
 
     setIsUploading(true);
+    setUploadStep('uploading');
     setUploadProgress(0);
 
-    // Simulação de upload real para o servidor
-    // Vídeos costumam demorar mais para "processar"
+    // Etapa 1: Simulação de Upload de dados
     const isVideo = newPostFile.type === 'video';
-    const totalSteps = isVideo ? 40 : 20;
-    const intervalTime = isVideo ? 150 : 80;
+    const uploadInterval = isVideo ? 100 : 50;
+    
+    for (let i = 0; i <= 70; i += 5) {
+      await new Promise(resolve => setTimeout(resolve, uploadInterval));
+      setUploadProgress(i);
+    }
 
-    for (let i = 0; i <= 100; i += (100 / totalSteps)) {
-      await new Promise(resolve => setTimeout(resolve, intervalTime));
-      setUploadProgress(Math.min(i, 99));
+    // Etapa 2: Simulação de Otimização e Indexação (Evita tela preta)
+    setUploadStep('optimizing');
+    const optimizeInterval = isVideo ? 200 : 100;
+    for (let i = 71; i <= 100; i += 2) {
+      await new Promise(resolve => setTimeout(resolve, optimizeInterval));
+      setUploadProgress(i);
     }
 
     const newPost: NGOPost = {
@@ -107,22 +98,20 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
       timestamp: Date.now()
     };
 
-    setUploadProgress(100);
+    setUploadStep('done');
     
-    // Pequeno delay para o usuário ver o 100%
     setTimeout(() => {
       onUpdate({
         ...ngo,
         posts: [newPost, ...ngo.posts]
       });
 
-      // Reset and close
       setNewPostFile(null);
       setNewPostCaption('');
       setIsUploading(false);
       setUploadProgress(0);
       setShowPostModal(false);
-    }, 600);
+    }, 800);
   };
 
   const copyToClipboard = (text: string) => {
@@ -134,10 +123,6 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
   const getInstagramUrl = (handle: string) => {
     const cleanHandle = handle.startsWith('@') ? handle.slice(1) : handle;
     return `https://www.instagram.com/${cleanHandle}`;
-  };
-
-  const getGmailUrl = (email: string) => {
-    return `https://mail.google.com/mail/?view=cm&fs=1&to=${email}`;
   };
 
   return (
@@ -168,6 +153,7 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
                 loop 
                 playsInline
                 preload="auto"
+                onLoadedData={(e) => (e.target as HTMLVideoElement).play()}
               />
             ) : (
               <img src={zoomedPost.url} className="w-full h-full object-contain" alt="Zoomed Story" />
@@ -211,33 +197,47 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
               {!newPostFile ? (
                 <div 
                   onClick={() => !isUploading && fileInputRef.current?.click()}
-                  className={`w-full aspect-video border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer hover:border-brand-blue hover:bg-blue-50'}`}
+                  className="w-full aspect-video border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group cursor-pointer hover:border-brand-blue hover:bg-blue-50"
                 >
-                  {isUploading ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <Loader2 className="w-10 h-10 text-brand-blue animate-spin" />
-                      <p className="text-sm font-bold text-gray-500">Lendo arquivo...</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 group-hover:text-brand-blue group-hover:bg-brand-blue/10 transition-all">
-                        <Upload size={32} />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-bold text-gray-700">Selecione uma mídia</p>
-                        <p className="text-xs text-gray-400">Fotos ou vídeos curtos de impacto</p>
-                      </div>
-                    </>
-                  )}
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 group-hover:text-brand-blue group-hover:bg-brand-blue/10 transition-all">
+                    <Upload size={32} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-gray-700">Selecione uma mídia</p>
+                    <p className="text-xs text-gray-400">Fotos ou vídeos de impacto social</p>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="relative aspect-video rounded-2xl overflow-hidden bg-black group">
+                  <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-inner">
                     {newPostFile.type === 'video' ? (
-                      <video src={newPostFile.url} className="w-full h-full object-cover" muted />
+                      <video src={newPostFile.url} className="w-full h-full object-cover" muted playsInline />
                     ) : (
                       <img src={newPostFile.url} className="w-full h-full object-cover" />
                     )}
+                    
+                    {isUploading && (
+                      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-white z-20">
+                        {uploadStep === 'uploading' ? (
+                           <Upload className="w-10 h-10 animate-bounce mb-4 text-brand-blue" />
+                        ) : (
+                           <Loader2 className="w-10 h-10 animate-spin mb-4 text-brand-yellow" />
+                        )}
+                        
+                        <div className="w-full h-2.5 bg-white/20 rounded-full overflow-hidden max-w-[200px] mb-3">
+                          <div 
+                            className={`h-full transition-all duration-300 ${uploadStep === 'uploading' ? 'bg-brand-blue' : 'bg-brand-yellow'}`}
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                        
+                        <p className="text-xs font-black uppercase tracking-widest text-center">
+                          {uploadStep === 'uploading' ? 'Carregando Mídia...' : 'Otimizando Vídeo...'}
+                        </p>
+                        <p className="text-[10px] text-white/60 mt-1">Isso garante que todos vejam sem erros.</p>
+                      </div>
+                    )}
+
                     {!isUploading && (
                       <button 
                         onClick={() => setNewPostFile(null)}
@@ -245,18 +245,6 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
                       >
                         <X size={16} />
                       </button>
-                    )}
-                    {isUploading && (
-                      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-white">
-                        <Loader2 className="w-10 h-10 animate-spin mb-4" />
-                        <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden max-w-xs">
-                          <div 
-                            className="h-full bg-brand-yellow transition-all duration-300"
-                            style={{ width: `${uploadProgress}%` }}
-                          />
-                        </div>
-                        <p className="mt-2 text-xs font-bold uppercase tracking-widest">{Math.round(uploadProgress)}% Enviando</p>
-                      </div>
                     )}
                   </div>
                   
@@ -268,7 +256,7 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
                     <textarea 
                       disabled={isUploading}
                       className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-brand-blue focus:bg-white rounded-2xl outline-none transition-all resize-none text-sm h-24 disabled:opacity-50"
-                      placeholder="Conte um pouco sobre este momento de impacto..."
+                      placeholder="Conte um pouco sobre este momento..."
                       value={newPostCaption}
                       onChange={e => setNewPostCaption(e.target.value)}
                     />
@@ -282,65 +270,18 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
                     {isUploading ? (
                       <>
                         <Loader2 size={18} className="animate-spin" />
-                        Processando...
+                        Aguarde...
                       </>
                     ) : (
                       <>
                         <Send size={18} />
-                        Publicar história
+                        Publicar agora
                       </>
                     )}
                   </button>
                 </div>
               )}
               <input type="file" accept="image/*,video/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Contact Modal */}
-      {showContactModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl relative animate-scale-up">
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-bold text-lg text-gray-900">Contato</h3>
-              <button 
-                onClick={() => setShowContactModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X size={20} className="text-gray-500" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <a href={getInstagramUrl(ngo.instagram)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-brand-blue/10 transition-all group">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-pink-500"><Instagram size={20} /></div>
-                  <div><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Instagram</p><p className="text-sm font-bold text-gray-800">{ngo.instagram}</p></div>
-                </div>
-                <ExternalLink size={16} className="text-gray-300 group-hover:text-brand-blue" />
-              </a>
-
-              <a href={getGmailUrl(ngo.email)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-brand-blue/10 transition-all group">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-brand-blue"><Mail size={20} /></div>
-                  <div><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">E-mail</p><p className="text-sm font-bold text-gray-800 truncate max-w-[150px]">{ngo.email}</p></div>
-                </div>
-                <ExternalLink size={16} className="text-gray-300 group-hover:text-brand-blue" />
-              </a>
-
-              {ngo.phone && (
-                <div onClick={() => copyToClipboard(ngo.phone!)} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-brand-blue/10 transition-all group cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-green-500"><Phone size={20} /></div>
-                    <div><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Telefone</p><p className="text-sm font-bold text-gray-800">{ngo.phone}</p></div>
-                  </div>
-                  <div className="flex items-center gap-1.5">{copied ? <Check size={12} className="text-green-600" /> : <Copy size={16} className="text-gray-300 group-hover:text-brand-blue" />}</div>
-                </div>
-              )}
-            </div>
-            <div className="p-4 bg-gray-50/50">
-              <button onClick={() => setShowContactModal(false)} className="w-full py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600">Fechar</button>
             </div>
           </div>
         </div>
@@ -382,8 +323,9 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
             </div>
           </div>
 
-          <div className="flex gap-8 justify-center sm:justify-start">
-            <div className="text-sm"><span className="font-bold">{ngo.posts?.length || 0}</span> histórias</div>
+          <div className="flex gap-8 justify-center sm:justify-start text-sm">
+            <div><span className="font-bold">{ngo.posts?.length || 0}</span> histórias</div>
+            <div className="text-gray-400">Cuidando com amor</div>
           </div>
 
           <div className="space-y-1 text-center sm:text-left">
@@ -392,27 +334,16 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
               <BrandedText text={ngo.category} />
             </div>
             
-            {isEditing && isOwner ? (
-              <div className="space-y-4 mt-4 bg-gray-50 p-4 rounded-xl border border-gray-100 text-left animate-fade-in">
-                <textarea className="w-full p-2 text-sm border rounded-lg outline-none" value={editedData.description} onChange={e => setEditedData({...editedData, description: e.target.value})} />
-                <input className="w-full p-2 text-sm border rounded-lg outline-none" value={editedData.goal} onChange={e => setEditedData({...editedData, goal: e.target.value})} />
-                <button onClick={handleSave} className="w-full bg-brand-blue text-white font-bold py-2 rounded-lg text-sm">Salvar Alterações</button>
-              </div>
-            ) : (
-              <>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{ngo.description}</p>
-                <div className="flex items-center justify-center sm:justify-start gap-1 text-brand-blue font-bold text-sm pt-1">
-                  <Target size={14} />
-                  <span>Meta: {ngo.goal}</span>
-                </div>
-                <button onClick={() => setShowContactModal(true)} className="text-sm font-bold text-blue-900 block pt-1 hover:underline">Contato</button>
-              </>
-            )}
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{ngo.description}</p>
+            <div className="flex items-center justify-center sm:justify-start gap-1 text-brand-blue font-bold text-sm pt-1">
+              <Target size={14} />
+              <span>Meta: {ngo.goal}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="border-t border-gray-200">
+      <div className="border-t border-gray-200 mb-8">
         <div className="flex justify-center -mt-px">
           <button className="flex items-center gap-1.5 py-4 text-xs font-bold uppercase tracking-wider border-t border-gray-800 text-gray-800">
             <Grid size={14} />
@@ -421,38 +352,37 @@ const NGOProfile: React.FC<NGOProfileProps> = ({ ngo, isOwner, onUpdate }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-1 md:gap-6 mt-2">
+      <div className="grid grid-cols-3 gap-1 md:gap-6">
         {ngo.posts && ngo.posts.length > 0 ? (
           ngo.posts.map((post) => (
             <div 
               key={post.id} 
               onClick={() => setZoomedPost(post)}
-              className="aspect-square relative group cursor-pointer overflow-hidden bg-gray-100"
+              className="aspect-square relative group cursor-pointer overflow-hidden bg-gray-100 rounded-lg sm:rounded-2xl"
             >
               {post.type === 'image' ? (
                 <img src={post.url} className="w-full h-full object-cover transition-all group-hover:scale-110" alt="História" />
               ) : (
                 <div className="relative w-full h-full">
-                  <video src={post.url} className="w-full h-full object-cover" preload="metadata" />
+                  <video 
+                    src={post.url} 
+                    className="w-full h-full object-cover" 
+                    preload="metadata"
+                  />
                   <div className="absolute top-2 right-2 text-white drop-shadow-md"><VideoIcon size={20} /></div>
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
                      <Play size={32} className="text-white fill-white" />
                   </div>
                 </div>
               )}
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold">
-                 <div className="flex items-center gap-1.5"><Heart size={20} fill="white" /> 0</div>
-                 <div className="flex items-center gap-1.5"><MessageCircle size={20} fill="white" /> 0</div>
-              </div>
             </div>
           ))
         ) : (
-          <div className="col-span-full py-20 text-center text-gray-300">
-            <div className="w-20 h-20 border-2 border-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Camera size={32} />
+          <div className="col-span-full py-20 text-center text-gray-300 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-100">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <Camera size={32} className="text-gray-200" />
             </div>
-            <h3 className="text-xl font-bold text-gray-400">Nenhuma história ainda</h3>
-            {isOwner && <p className="text-sm mt-2">Clique em + Histórias para começar a postar seu impacto.</p>}
+            <h3 className="text-xl font-bold text-gray-400">Sem histórias no momento</h3>
           </div>
         )}
       </div>
